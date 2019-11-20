@@ -23,7 +23,7 @@
 
     <groupId>rs.ltt.jmap</groupId>
     <artifactId>lttrs-cli</artifactId>
-    <version>0.1.0</version>
+    <version>0.0.1</version>
 
     <build>
         <plugins>
@@ -76,9 +76,9 @@
     <dependencies>
 
         <dependency>
-            <groupId>${project.groupId}</groupId>
+            <groupId>rs.ltt.jmap</groupId>
             <artifactId>jmap-mua</artifactId>
-            <version>${project.version}</version>
+            <version>0.1.1</version>
         </dependency>
 
         <dependency>
