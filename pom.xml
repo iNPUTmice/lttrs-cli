@@ -32,8 +32,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.8.0</version>
                 <configuration>
-                    <source>1.7</source>
-                    <target>1.7</target>
+                    <source>8</source>
+                    <target>8</target>
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>
@@ -78,26 +78,19 @@
         <dependency>
             <groupId>rs.ltt.jmap</groupId>
             <artifactId>jmap-mua</artifactId>
-            <version>0.1.1</version>
+            <version>0.3.0</version>
         </dependency>
 
         <dependency>
             <groupId>com.googlecode.lanterna</groupId>
             <artifactId>lanterna</artifactId>
-            <version>3.0.1</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.google.auto.service</groupId>
-            <artifactId>auto-service</artifactId>
-            <version>1.0-rc4</version>
-            <scope>provided</scope>
+            <version>3.0.2</version>
         </dependency>
 
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
-            <version>1.7.23</version>
+            <version>1.7.30</version>
         </dependency>
 
     </dependencies>

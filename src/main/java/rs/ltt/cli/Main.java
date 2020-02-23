@@ -28,18 +28,17 @@ import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.TerminalScreen;
 import com.googlecode.lanterna.terminal.DefaultTerminalFactory;
 import com.googlecode.lanterna.terminal.Terminal;
-import com.googlecode.lanterna.terminal.TerminalResizeListener;
 import okhttp3.HttpUrl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import rs.ltt.cli.cache.MyInMemoryCache;
 import rs.ltt.cli.model.QueryViewItem;
 import rs.ltt.jmap.client.JmapClient;
+import rs.ltt.jmap.client.api.HttpJmapApiClient;
 import rs.ltt.jmap.client.api.MethodErrorResponseException;
 import rs.ltt.jmap.client.api.UnauthorizedException;
 import rs.ltt.jmap.common.entity.*;
 import rs.ltt.jmap.common.entity.capability.MailAccountCapability;
-import rs.ltt.jmap.common.entity.capability.MailCapability;
 import rs.ltt.jmap.common.entity.filter.EmailFilterCondition;
 import rs.ltt.jmap.common.entity.query.EmailQuery;
 import rs.ltt.jmap.mua.Mua;
@@ -79,7 +78,7 @@ public class Main {
         final String password;
         final HttpUrl sessionResource;
 
-        if (args.length ==2 ) {
+        if (args.length == 2) {
             sessionResource = null;
             username = args[0];
             password = args[1];
@@ -120,72 +119,66 @@ public class Main {
             screen.setCursorPosition(null);
             screen.refresh();
 
-            final Thread refreshThread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    final IdentifiableMailboxWithRole inbox;
+            final Thread refreshThread = new Thread(() -> {
+                final IdentifiableMailboxWithRole inbox;
+                try {
+                    loadingMessage(screen, "Loading mailboxes…");
+                    mua.refreshMailboxes().get();
+                    inbox = MailboxUtil.find(myInMemoryCache.getMailboxes(), Role.INBOX);
+                    loadingMessage(screen, "Loading identities…");
+                    mua.refreshIdentities().get();
+                } catch (Exception e) {
+                    if (e instanceof ExecutionException) {
+                        Throwable cause = e.getCause();
+                        if (cause instanceof UnauthorizedException) {
+                            loadingMessage(screen, "Unauthorized");
+                            return;
+                        } else if (cause instanceof MethodErrorResponseException) {
+                            loadingMessage(screen, ((MethodErrorResponseException) cause).getMethodErrorResponse().getClass().getName());
+                            return;
+                        }
+                    }
+                    loadingMessage(screen, e.getMessage());
+                    return;
+                }
+                if (inbox == null) {
+                    loadingMessage(screen, "Inbox not found");
+                    return;
+                }
+                while (running) {
                     try {
-                        loadingMessage(screen, "Loading mailboxes…");
-                        mua.refreshMailboxes().get();
-                        inbox = MailboxUtil.find(myInMemoryCache.getMailboxes(), Role.INBOX);
-                        loadingMessage(screen, "Loading identities…");
-                        mua.refreshIdentities().get();
-                    } catch (Exception e) {
-                        if (e instanceof ExecutionException) {
-                            Throwable cause = e.getCause();
-                            if (cause instanceof UnauthorizedException) {
-                                loadingMessage(screen, "Unauthorized");
-                                return;
-                            } else if (cause instanceof MethodErrorResponseException) {
-                                loadingMessage(screen, ((MethodErrorResponseException) cause).getMethodErrorResponse().getClass().getName());
-                                return;
-                            }
+                        currentQuery = EmailQuery.of(EmailFilterCondition.builder().inMailbox(inbox.getId()).build(), true);
+                        if (items == null) {
+                            loadingMessage(screen, "Loading messages from inbox…");
                         }
-                        loadingMessage(screen, e.getMessage());
-                        return;
-                    }
-                    if (inbox == null) {
-                        loadingMessage(screen, "Inbox not found");
-                        return;
-                    }
-                    while (running) {
+                        Status status = mua.query(currentQuery).get();
+                        if (status != Status.UNCHANGED) {
+                            items = myInMemoryCache.getQueryViewItems(currentQuery.toQueryString());
+                            redrawCurrentList(screen);
+                        }
                         try {
-                            currentQuery = EmailQuery.of(EmailFilterCondition.builder().inMailbox(inbox.getId()).build(), true);
-                            if (items == null) {
-                                loadingMessage(screen, "Loading messages from inbox…");
-                            }
-                            Status status = mua.query(currentQuery).get();
-                            if (status != Status.UNCHANGED) {
-                                items = myInMemoryCache.getQueryViewItems(currentQuery.toQueryString());
-                                redrawCurrentList(screen);
-                            }
-                            try {
-                                Thread.sleep(5000);
-                            } catch (InterruptedException e) {
-                                //goodbye
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
+                            Thread.sleep(5000);
+                        } catch (InterruptedException e) {
+                            //goodbye
                         }
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
             });
             refreshThread.start();
 
-            terminal.addResizeListener(new TerminalResizeListener() {
-                @Override
-                public void onResized(Terminal terminal, TerminalSize terminalSize) {
-                    try {
-                        if (items != null) {
-                            int newAvailableRows = terminalSize.getRows();
-                            int maxPossibleOffset = Math.max(0, items.size() - newAvailableRows);
-                            int minPossibleOffset = cursorPosition;
-                            offset = Math.min(minPossibleOffset, maxPossibleOffset);
-                            redrawCurrentList(screen);
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
+            terminal.addResizeListener((terminal1, terminalSize) -> {
+                try {
+                    if (items != null) {
+                        int newAvailableRows = terminalSize.getRows();
+                        int maxPossibleOffset = Math.max(0, items.size() - newAvailableRows);
+                        int minPossibleOffset = cursorPosition;
+                        offset = Math.min(minPossibleOffset, maxPossibleOffset);
+                        redrawCurrentList(screen);
                     }
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             });
 
@@ -259,7 +252,7 @@ public class Main {
                 ++offset;
             }
             redrawCurrentList(screen);
-            if (cursorPosition == items.size() -1) {
+            if (cursorPosition == items.size() - 1) {
                 QueryViewItem last = Iterables.getLast(items, null);
                 try {
                     Status status = mua.query(currentQuery, last.mostRecent.getId()).get();
@@ -268,7 +261,8 @@ public class Main {
                         redrawCurrentList(screen);
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();;
+                    e.printStackTrace();
+                    ;
                 }
             }
         }
@@ -279,6 +273,8 @@ public class Main {
         running = false;
         refreshThread.interrupt();
         mua.shutdown();
+        HttpJmapApiClient.OK_HTTP_CLIENT.connectionPool().evictAll();
+        HttpJmapApiClient.OK_HTTP_CLIENT.dispatcher().executorService().shutdownNow();
     }
 
     private static void toggleSeen(Mua mua) {
@@ -307,7 +303,7 @@ public class Main {
         Identity identity = Iterables.getFirst(myInMemoryCache.getIdentities(), null);
         if (identity != null) {
             try {
-                LOGGER.info("submitted email: "+mua.submit(item.mostRecent, identity).get());
+                LOGGER.info("submitted email: " + mua.submit(item.mostRecent, identity).get());
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -319,8 +315,8 @@ public class Main {
 
     private static void applyLabel(Mua mua, String label) {
         Mailbox labelMailbox = null;
-        for(Mailbox mailbox : myInMemoryCache.getMailboxes()) {
-            if(label.equals(mailbox.getName()) && mailbox.getRole() == null){
+        for (Mailbox mailbox : myInMemoryCache.getMailboxes()) {
+            if (label.equals(mailbox.getName()) && mailbox.getRole() == null) {
                 labelMailbox = mailbox;
             }
         }
@@ -365,7 +361,7 @@ public class Main {
                 .textBody(emailBodyPart)
                 .mailboxId(MailboxUtil.find(myInMemoryCache.getMailboxes(), Role.INBOX).getId(), true)
                 .build();
-        ListenableFuture<Boolean> future;
+        ListenableFuture<String> future;
         if (sendImmediately) {
             Identity identity = Iterables.getFirst(myInMemoryCache.getIdentities(), null);
             future = mua.send(email, identity);
