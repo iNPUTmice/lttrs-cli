@@ -272,7 +272,7 @@ public class Main {
         screen.stopScreen();
         running = false;
         refreshThread.interrupt();
-        mua.shutdown();
+        mua.close();
         HttpJmapApiClient.OK_HTTP_CLIENT.connectionPool().evictAll();
         HttpJmapApiClient.OK_HTTP_CLIENT.dispatcher().executorService().shutdownNow();
     }
